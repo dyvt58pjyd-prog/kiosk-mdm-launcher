@@ -91,7 +91,22 @@ class KioskLauncherActivity : ComponentActivity() {
             mdmServer.start()
         }
 
-        // Schedule periodic central MDM sync
+        // Trigger immediate background sync directly to Neon PostgreSQL & MDM Server
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val androidId = android.provider.Settings.Secure.getString(
+                    contentResolver,
+                    android.provider.Settings.Secure.ANDROID_ID
+                ) ?: "device_${android.os.Build.MODEL}"
+                val neonClient = com.kiosk.launcher.mdm.NeonDirectDatabaseClient(applicationContext)
+                val data = telemetryCollector.collect()
+                neonClient.syncTelemetryDirectly(data, androidId)
+            } catch (e: Exception) {
+                android.util.Log.w("KioskLauncher", "Immediate Neon sync failed", e)
+            }
+        }
+
+        // Schedule immediate and periodic central MDM sync
         scheduleMdmSyncWorker()
 
         // Load installed packages asynchronously
@@ -266,6 +281,13 @@ class KioskLauncherActivity : ComponentActivity() {
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
 
+        // Immediate one-time sync so the tablet appears on MDM server immediately
+        val oneTimeRequest = OneTimeWorkRequestBuilder<MdmSyncWorker>()
+            .setConstraints(constraints)
+            .build()
+        WorkManager.getInstance(applicationContext).enqueue(oneTimeRequest)
+
+        // Recurring periodic sync
         val syncRequest = PeriodicWorkRequestBuilder<MdmSyncWorker>(
             prefs.mdmReportingIntervalMinutes.toLong().coerceAtLeast(15),
             TimeUnit.MINUTES

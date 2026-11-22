@@ -90,7 +90,7 @@ class KioskPreferences(context: Context) {
         set(value) = prefs.edit().putBoolean(KEY_DISALLOW_STATUS_BAR, value).apply()
 
     var mdmServerUrl: String
-        get() = prefs.getString(KEY_MDM_SERVER_URL, "") ?: ""
+        get() = prefs.getString(KEY_MDM_SERVER_URL, "http://192.168.0.11:3000") ?: "http://192.168.0.11:3000"
         set(value) = prefs.edit().putString(KEY_MDM_SERVER_URL, value).apply()
 
     var mdmReportingIntervalMinutes: Int

@@ -630,17 +630,20 @@ private fun MdmTelemetryTab(
         }
 
         item {
-            Text("Central MDM Server Sync (Optional)", fontWeight = FontWeight.Bold, color = TextPrimary, fontSize = 16.sp)
+            Text("Central MDM Web Server (Live Control)", fontWeight = FontWeight.Bold, color = TextPrimary, fontSize = 16.sp)
         }
 
         item {
+            var mdmTestStatus by remember { mutableStateOf("") }
+            val coroutineScope = rememberCoroutineScope()
+
             Card(
                 colors = CardDefaults.cardColors(containerColor = SurfaceElevated),
                 shape = RoundedCornerShape(10.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = "Enter a central HTTP webhook/API endpoint to periodically upload telemetry data:",
+                        text = "Enter your PC / Server MDM Dashboard URL (e.g., http://192.168.0.11:3000):",
                         fontSize = 12.sp,
                         color = TextSecondary
                     )
@@ -650,7 +653,8 @@ private fun MdmTelemetryTab(
                             mdmUrl = it
                             prefs.mdmServerUrl = it
                         },
-                        placeholder = { Text("https://your-mdm-server.com/api/telemetry") },
+                        label = { Text("MDM Server URL") },
+                        placeholder = { Text("http://192.168.0.11:3000") },
                         modifier = Modifier.fillMaxWidth(),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = AccentPrimary,
@@ -660,6 +664,45 @@ private fun MdmTelemetryTab(
                         ),
                         singleLine = true
                     )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                mdmTestStatus = "Connecting to MDM Server..."
+                                coroutineScope.launch(Dispatchers.IO) {
+                                    val ok = try {
+                                        val base = if (mdmUrl.endsWith("/")) mdmUrl.dropLast(1) else mdmUrl
+                                        val target = if (base.endsWith("/api/status") || base.endsWith("/api/mdm/heartbeat")) base else "$base/api/status"
+                                        val conn = (java.net.URL(target).openConnection() as java.net.HttpURLConnection).apply {
+                                            connectTimeout = 5000
+                                            readTimeout = 5000
+                                            requestMethod = "GET"
+                                        }
+                                        val code = conn.responseCode
+                                        code in 200..299
+                                    } catch (e: Exception) {
+                                        false
+                                    }
+                                    withContext(Dispatchers.Main) {
+                                        mdmTestStatus = if (ok) "✓ MDM Server Reached!" else "✕ Failed to connect. Check Wi-Fi & IP"
+                                    }
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = AccentPrimary)
+                        ) {
+                            Text("Test & Ping Server", color = TextPrimary, fontSize = 12.sp)
+                        }
+                        if (mdmTestStatus.isNotEmpty()) {
+                            Text(
+                                text = mdmTestStatus,
+                                color = if (mdmTestStatus.startsWith("✓")) AccentSuccess else AccentDanger,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -706,17 +749,21 @@ private fun MdmTelemetryTab(
                     ) {
                         Button(
                             onClick = {
-                                neonTestStatus = "Connecting directly to Neon..."
+                                neonTestStatus = "Syncing tablet to Neon..."
                                 coroutineScope.launch(Dispatchers.IO) {
-                                    val ok = neonClient.testConnection()
+                                    val androidId = android.provider.Settings.Secure.getString(
+                                        context.contentResolver,
+                                        android.provider.Settings.Secure.ANDROID_ID
+                                    ) ?: "device_${android.os.Build.MODEL}"
+                                    val ok = neonClient.syncTelemetryDirectly(telemetry, androidId)
                                     withContext(Dispatchers.Main) {
-                                        neonTestStatus = if (ok) "✓ Neon Connection Verified!" else "✕ Failed to reach Neon"
+                                        neonTestStatus = if (ok) "✓ Synced! Tablet now visible on Web" else "✕ Direct Neon sync failed"
                                     }
                                 }
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = AccentPrimary)
+                            colors = ButtonDefaults.buttonColors(containerColor = AccentSuccess)
                         ) {
-                            Text("Test Direct Connection", color = TextPrimary, fontSize = 12.sp)
+                            Text("Sync Tablet to Neon Now", color = TextPrimary, fontSize = 12.sp)
                         }
                         if (neonTestStatus.isNotEmpty()) {
                             Text(
