@@ -28,8 +28,12 @@ import com.kiosk.launcher.data.InstalledAppInfo
 import com.kiosk.launcher.data.KioskPreferences
 import com.kiosk.launcher.dpc.KioskPolicyManager
 import com.kiosk.launcher.mdm.MdmTelemetryCollector
+import com.kiosk.launcher.mdm.NeonDirectDatabaseClient
 import com.kiosk.launcher.ui.components.drawableToBitmap
 import com.kiosk.launcher.ui.theme.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Administrative control center for Whitelist management, DPC policies,
@@ -655,6 +659,73 @@ private fun MdmTelemetryTab(
                         ),
                         singleLine = true
                     )
+                }
+            }
+        }
+
+        item {
+            Text("Neon Serverless PostgreSQL (Direct Tablet Sync)", fontWeight = FontWeight.Bold, color = TextPrimary, fontSize = 16.sp)
+        }
+
+        item {
+            var neonUrl by remember { mutableStateOf(prefs.neonDatabaseUrl) }
+            var neonTestStatus by remember { mutableStateOf("") }
+            val coroutineScope = rememberCoroutineScope()
+            val neonClient = remember { NeonDirectDatabaseClient(context) }
+
+            Card(
+                colors = CardDefaults.cardColors(containerColor = SurfaceElevated),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "The tablet APK writes live telemetry directly to Neon PostgreSQL and executes commands:",
+                        fontSize = 12.sp,
+                        color = TextSecondary
+                    )
+                    OutlinedTextField(
+                        value = neonUrl,
+                        onValueChange = {
+                            neonUrl = it
+                            prefs.neonDatabaseUrl = it
+                        },
+                        label = { Text("Neon Database Connection String") },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = AccentPrimary,
+                            unfocusedBorderColor = BorderDark,
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary
+                        ),
+                        singleLine = true
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                neonTestStatus = "Connecting directly to Neon..."
+                                coroutineScope.launch(Dispatchers.IO) {
+                                    val ok = neonClient.testConnection()
+                                    withContext(Dispatchers.Main) {
+                                        neonTestStatus = if (ok) "✓ Neon Connection Verified!" else "✕ Failed to reach Neon"
+                                    }
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = AccentPrimary)
+                        ) {
+                            Text("Test Direct Connection", color = TextPrimary, fontSize = 12.sp)
+                        }
+                        if (neonTestStatus.isNotEmpty()) {
+                            Text(
+                                text = neonTestStatus,
+                                color = if (neonTestStatus.startsWith("✓")) AccentSuccess else AccentDanger,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
                 }
             }
         }

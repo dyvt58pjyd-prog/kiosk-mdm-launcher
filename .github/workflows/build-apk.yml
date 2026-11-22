@@ -36,40 +36,41 @@ jobs:
 
     - name: Rename APK for Release
       run: |
-        cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/kiosk-mdm-launcher-v1.0.0.apk
+        cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/kiosk-mdm-launcher-v1.0.1.apk
 
     - name: Upload APK as Artifact
       uses: actions/upload-artifact@v4
       with:
         name: kiosk-mdm-launcher-apk
-        path: app/build/outputs/apk/debug/kiosk-mdm-launcher-v1.0.0.apk
+        path: app/build/outputs/apk/debug/kiosk-mdm-launcher-v1.0.1.apk
 
     - name: Create or Update GitHub Release
       uses: softprops/action-gh-release@v2
       with:
-        tag_name: v1.0.0
-        name: "Kiosk MDM Launcher v1.0.0 (APK)"
+        tag_name: v1.0.1
+        name: "Kiosk MDM Launcher v1.0.1 (APK) - Direct Neon DB Edition"
         body: |
-          ## 📱 Kiosk MDM Launcher & Device Policy Controller (v1.0.0)
-          
-          Production-ready native Android Kiosk Launcher & DPC Agent designed for Android tablets, connected to Neon Serverless PostgreSQL.
-          
-          ### 🚀 Features Included:
-          - **Multi-App Kiosk Lockdown:** Restricts users to approved whitelisted apps only.
+          ## 📱 Kiosk MDM Launcher & Device Policy Controller (v1.0.1)
+
+          Production-ready native Android Kiosk Launcher & DPC Agent designed for Android tablets, featuring **Direct Neon PostgreSQL JDBC Client** built right into the APK as well as the Web Admin Console.
+
+          ### 🚀 Features in v1.0.1:
+          - **Direct Neon PostgreSQL Integration in APK:** The Android application connects directly to the Neon serverless database over SSL JDBC (`org.postgresql:postgresql:42.7.2`) to upsert hardware telemetry, receive commands, and record audit logs offline/online.
+          - **Multi-App Kiosk Lockdown:** Restricts users to approved whitelisted apps only with `LOCK_TASK_FEATURE_HOME`.
           - **Device Owner (DPC) Enforcement:** Disables safe mode, status bar expansion, factory reset, and USB mounting.
           - **Real-Time Live WebSocket Remote Control:** Sub-50ms instant lock, reboot, volume & brightness adjustment.
           - **Advanced MDM Actions:** Emergency siren (alarm), broadcast pop-up messages, hardware camera lockdown, GPS tracking, and remote enterprise wipe.
-          - **Neon PostgreSQL Integration:** Real-time telemetry sync with live cloud web console.
-          
+          - **Neon Web Admin Dashboard:** Live cloud web console with GPS mapping, telemetry graphs, and remote action dispatch.
+
           ### 📲 Installation Instructions:
-          1. Download `kiosk-mdm-launcher-v1.0.0.apk` below.
+          1. Download `kiosk-mdm-launcher-v1.0.1.apk` below.
           2. Connect your tablet via USB and ensure all accounts are removed (*Settings ➔ Accounts ➔ 0 accounts*).
           3. Install via ADB:
              ```bash
-             adb install -r kiosk-mdm-launcher-v1.0.0.apk
+             adb install -r kiosk-mdm-launcher-v1.0.1.apk
              adb shell dpm set-device-owner com.kiosk.launcher/.receiver.KioskAdminReceiver
              ```
-        files: app/build/outputs/apk/debug/kiosk-mdm-launcher-v1.0.0.apk
+        files: app/build/outputs/apk/debug/kiosk-mdm-launcher-v1.0.1.apk
         draft: false
         prerelease: false
       env:

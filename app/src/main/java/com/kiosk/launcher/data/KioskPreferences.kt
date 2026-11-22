@@ -25,6 +25,11 @@ class KioskPreferences(context: Context) {
         private const val KEY_MDM_REPORTING_INTERVAL = "mdm_reporting_interval_min"
         private const val KEY_LOCAL_SERVER_ENABLED = "local_server_enabled"
         private const val KEY_LOCAL_SERVER_PORT = "local_server_port"
+        private const val KEY_NEON_DATABASE_URL = "neon_database_url"
+
+        // Default Neon PostgreSQL Connection String
+        const val DEFAULT_NEON_URL =
+            "postgresql://neondb_owner:npg_6NGxiCS0Ubjp@ep-quiet-lab-bdb0wmhf-pooler.c-8.us-east-2.aws.neon.tech/neondb?sslmode=require"
 
         // Standard default whitelisted apps (Settings + Browser if installed)
         private val DEFAULT_WHITELIST = setOf(
@@ -99,4 +104,8 @@ class KioskPreferences(context: Context) {
     var localServerPort: Int
         get() = prefs.getInt(KEY_LOCAL_SERVER_PORT, 8080)
         set(value) = prefs.edit().putInt(KEY_LOCAL_SERVER_PORT, value).apply()
+
+    var neonDatabaseUrl: String
+        get() = prefs.getString(KEY_NEON_DATABASE_URL, DEFAULT_NEON_URL) ?: DEFAULT_NEON_URL
+        set(value) = prefs.edit().putString(KEY_NEON_DATABASE_URL, value).apply()
 }

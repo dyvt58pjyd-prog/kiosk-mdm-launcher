@@ -14,10 +14,12 @@ const memoryStore = {
   auditLogs: []
 };
 
+const DEFAULT_NEON_URL = 'postgresql://neondb_owner:npg_6NGxiCS0Ubjp@ep-quiet-lab-bdb0wmhf-pooler.c-8.us-east-2.aws.neon.tech/neondb?sslmode=require';
+
 /**
  * Initializes or reconnects to the Neon PostgreSQL database.
  */
-async function initDb(databaseUrl = process.env.DATABASE_URL) {
+async function initDb(databaseUrl = process.env.DATABASE_URL || DEFAULT_NEON_URL) {
   if (pool) {
     try {
       await pool.end();
@@ -27,17 +29,12 @@ async function initDb(databaseUrl = process.env.DATABASE_URL) {
     pool = null;
   }
 
-  if (!databaseUrl || databaseUrl.trim() === '') {
-    isNeonConnected = false;
-    connectionError = 'DATABASE_URL is not set. Using local in-memory store.';
-    console.log('[DB] No Neon DATABASE_URL provided. Running in local memory mode.');
-    return false;
-  }
+  const targetUrl = (databaseUrl && databaseUrl.trim()) || DEFAULT_NEON_URL;
 
   try {
     console.log('[DB] Connecting to Neon PostgreSQL...');
     pool = new Pool({
-      connectionString: databaseUrl.trim(),
+      connectionString: targetUrl.trim(),
       ssl: {
         rejectUnauthorized: false
       },

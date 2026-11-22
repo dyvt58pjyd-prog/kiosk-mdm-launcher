@@ -11,8 +11,8 @@ android {
         applicationId = "com.kiosk.launcher"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.0.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -50,6 +50,8 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            excludes += "/META-INF/INDEX.LIST"
+            excludes += "/META-INF/io.netty.versions.properties"
         }
     }
 }
@@ -78,6 +80,9 @@ dependencies {
 
     // OkHttp for Real-Time Sub-Second WebSocket & Remote Commands
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
+    // Direct Neon PostgreSQL JDBC Driver
+    implementation("org.postgresql:postgresql:42.7.2")
 
     // Debugging & Tooling
     debugImplementation("androidx.compose.ui:ui-tooling")

@@ -19,9 +19,8 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * Background WorkManager worker that periodically collects telemetry, POSTs
- * it to the Central MDM Dashboard (backed by Neon PostgreSQL), and executes
- * any pending remote commands (LOCK, REBOOT, SET_WHITELIST).
+ * Background WorkManager worker that performs direct sync to Neon PostgreSQL
+ * AND optionally to the Central MDM Dashboard server.
  */
 class MdmSyncWorker(
     appContext: Context,
@@ -35,153 +34,117 @@ class MdmSyncWorker(
     @SuppressLint("HardwareIds")
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val prefs = KioskPreferences(applicationContext)
-        val serverUrl = prefs.mdmServerUrl
+        val policyManager = KioskPolicyManager(applicationContext)
+        val advancedFeatures = MdmAdvancedFeatures(applicationContext)
+        val collector = MdmTelemetryCollector(applicationContext)
+        val telemetryData = collector.collect()
 
-        if (serverUrl.isBlank()) {
-            // Local monitoring only (no central MDM URL configured yet)
-            return@withContext Result.success()
-        }
+        val androidId = Settings.Secure.getString(
+            applicationContext.contentResolver,
+            Settings.Secure.ANDROID_ID
+        ) ?: "unknown_device"
 
-        try {
-            val collector = MdmTelemetryCollector(applicationContext)
-            val telemetryData = collector.collect()
+        // ----------------- 1. Direct Neon PostgreSQL Sync -----------------
+        val neonClient = NeonDirectDatabaseClient(applicationContext)
+        var neonSuccess = false
 
-            // Get device unique ID (Android ID)
-            val androidId = Settings.Secure.getString(
-                applicationContext.contentResolver,
-                Settings.Secure.ANDROID_ID
-            ) ?: "unknown_device"
+        if (prefs.neonDatabaseUrl.isNotBlank()) {
+            try {
+                neonSuccess = neonClient.syncTelemetryDirectly(telemetryData, androidId)
+                Log.i(TAG, "Direct Neon sync executed: success=$neonSuccess")
 
-            // Construct heartbeat payload
-            val root = JSONObject()
-            root.put("deviceId", androidId)
-            root.put("deviceName", telemetryData.deviceName)
-            root.put("manufacturer", telemetryData.manufacturer)
-            root.put("model", telemetryData.model)
-            root.put("androidVersion", telemetryData.androidVersion)
-            root.put("apiLevel", telemetryData.apiLevel)
-            root.put("securityPatch", telemetryData.securityPatch)
-            root.put("uptimeSeconds", telemetryData.uptimeSeconds)
-            root.put("ipAddress", telemetryData.ipAddress)
-            root.put("isDeviceOwner", telemetryData.isDeviceOwner)
-            root.put("batteryLevel", telemetryData.batteryLevel)
-            root.put("isCharging", telemetryData.isCharging)
-            root.put("batteryHealth", telemetryData.batteryHealth)
-            root.put("batteryTempCelsius", telemetryData.batteryTempCelsius)
-            root.put("batteryVoltageMv", telemetryData.batteryVoltageMv)
-            root.put("wifiConnected", telemetryData.wifiConnected)
-            root.put("wifiSsid", telemetryData.wifiSsid)
-            root.put("wifiRssi", telemetryData.wifiRssi)
-            root.put("totalRamMb", telemetryData.totalRamMb)
-            root.put("availableRamMb", telemetryData.availableRamMb)
-            root.put("totalStorageGb", telemetryData.totalStorageGb)
-            root.put("availableStorageGb", telemetryData.availableStorageGb)
-
-            val appsArray = JSONArray()
-            telemetryData.whitelistedApps.forEach { appsArray.put(it) }
-            root.put("whitelistedApps", appsArray)
-
-            // Normalize endpoint URL (ensures target is /api/mdm/heartbeat)
-            val baseUrl = if (serverUrl.endsWith("/")) serverUrl.dropLast(1) else serverUrl
-            val heartbeatUrl = if (baseUrl.endsWith("/api/mdm/heartbeat")) baseUrl else "$baseUrl/api/mdm/heartbeat"
-
-            val url = URL(heartbeatUrl)
-            val conn = (url.openConnection() as HttpURLConnection).apply {
-                requestMethod = "POST"
-                setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-                setRequestProperty("User-Agent", "KioskMDM-TabletAgent/1.0")
-                connectTimeout = 8000
-                readTimeout = 8000
-                doOutput = true
-            }
-
-            OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use { writer ->
-                writer.write(root.toString())
-                writer.flush()
-            }
-
-            val responseCode = conn.responseCode
-            Log.i(TAG, "MDM Telemetry sync response code: $responseCode")
-
-            if (responseCode in 200..299) {
-                val responseBody = BufferedReader(InputStreamReader(conn.inputStream, Charsets.UTF_8)).readText()
-                val resJson = JSONObject(responseBody)
-
-                // Process any pending commands received from Central Admin Dashboard
-                if (resJson.has("pendingCommands")) {
-                    val commands = resJson.getJSONArray("pendingCommands")
-                    val policyManager = KioskPolicyManager(applicationContext)
-
-                    for (i in 0 until commands.length()) {
-                        val cmdObj = commands.getJSONObject(i)
-                        val cmdId = cmdObj.optInt("id", -1)
-                        val commandName = cmdObj.optString("command", "").uppercase()
-                        val payload = cmdObj.optJSONObject("payload")
-
-                        Log.i(TAG, "Received remote MDM command: $commandName (ID: $cmdId)")
-
-                        var executionStatus = "EXECUTED"
-                        when (commandName) {
-                            "LOCK" -> {
-                                policyManager.lockDeviceNow()
-                            }
-                            "REBOOT" -> {
-                                policyManager.rebootDevice()
-                            }
-                            "SET_WHITELIST" -> {
-                                if (payload != null && payload.has("whitelist")) {
-                                    val list = payload.getJSONArray("whitelist")
-                                    val newWhitelist = mutableSetOf<String>()
-                                    for (j in 0 until list.length()) {
-                                        newWhitelist.add(list.getString(j))
-                                    }
-                                    prefs.whitelistedPackages = newWhitelist
-                                    policyManager.updateLockTaskPackages()
-                                }
-                            }
-                            "PING" -> {
-                                // No-op, ping verified
-                            }
-                            else -> {
-                                executionStatus = "UNSUPPORTED"
-                            }
+                // Poll pending commands directly from Neon PostgreSQL
+                neonClient.pollAndExecutePendingCommands(androidId) { cmdName, payload ->
+                    Log.i(TAG, "Executing command directly from Neon: $cmdName")
+                    when (cmdName.uppercase()) {
+                        "LOCK" -> { policyManager.lockDeviceNow(); true }
+                        "REBOOT" -> { policyManager.rebootDevice(); true }
+                        "SIREN" -> {
+                            advancedFeatures.playEmergencySiren(payload.optInt("duration", 10))
+                            true
                         }
-
-                        // Send command acknowledgment
-                        if (cmdId > 0) {
-                            sendAck(baseUrl, cmdId, executionStatus)
+                        "SET_VOLUME" -> {
+                            advancedFeatures.setVolumeLevel(payload.optInt("volume", 50))
+                            true
                         }
+                        "SET_CAMERA_DISABLED" -> {
+                            advancedFeatures.setCameraDisabled(payload.optBoolean("disabled", false))
+                            true
+                        }
+                        "SET_WHITELIST" -> {
+                            if (payload.has("whitelist")) {
+                                val list = payload.getJSONArray("whitelist")
+                                val newWhitelist = mutableSetOf<String>()
+                                for (j in 0 until list.length()) newWhitelist.add(list.getString(j))
+                                prefs.whitelistedPackages = newWhitelist
+                                policyManager.updateLockTaskPackages()
+                            }
+                            true
+                        }
+                        else -> true
                     }
                 }
-                Result.success()
-            } else {
-                Log.w(TAG, "Server returned error: $responseCode")
-                Result.retry()
+            } catch (e: Exception) {
+                Log.e(TAG, "Direct Neon sync error", e)
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to upload MDM telemetry", e)
-            Result.retry()
         }
-    }
 
-    private fun sendAck(baseUrl: String, commandId: Int, status: String) {
-        try {
-            val ackUrl = "$baseUrl/api/mdm/command/ack"
-            val conn = (URL(ackUrl).openConnection() as HttpURLConnection).apply {
-                requestMethod = "POST"
-                setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-                connectTimeout = 5000
-                readTimeout = 5000
-                doOutput = true
+        // ----------------- 2. Central MDM Web Server Sync (Optional) -----------------
+        val serverUrl = prefs.mdmServerUrl
+        if (serverUrl.isNotBlank()) {
+            try {
+                val root = JSONObject()
+                root.put("deviceId", androidId)
+                root.put("deviceName", telemetryData.deviceName)
+                root.put("manufacturer", telemetryData.manufacturer)
+                root.put("model", telemetryData.model)
+                root.put("androidVersion", telemetryData.androidVersion)
+                root.put("apiLevel", telemetryData.apiLevel)
+                root.put("securityPatch", telemetryData.securityPatch)
+                root.put("uptimeSeconds", telemetryData.uptimeSeconds)
+                root.put("ipAddress", telemetryData.ipAddress)
+                root.put("isDeviceOwner", telemetryData.isDeviceOwner)
+                root.put("batteryLevel", telemetryData.batteryLevel)
+                root.put("isCharging", telemetryData.isCharging)
+                root.put("batteryHealth", telemetryData.batteryHealth)
+                root.put("batteryTempCelsius", telemetryData.batteryTempCelsius)
+                root.put("batteryVoltageMv", telemetryData.batteryVoltageMv)
+                root.put("wifiConnected", telemetryData.wifiConnected)
+                root.put("wifiSsid", telemetryData.wifiSsid)
+                root.put("wifiRssi", telemetryData.wifiRssi)
+                root.put("totalRamMb", telemetryData.totalRamMb)
+                root.put("availableRamMb", telemetryData.availableRamMb)
+                root.put("totalStorageGb", telemetryData.totalStorageGb)
+                root.put("availableStorageGb", telemetryData.availableStorageGb)
+
+                val appsArray = JSONArray()
+                telemetryData.whitelistedApps.forEach { appsArray.put(it) }
+                root.put("whitelistedApps", appsArray)
+
+                val baseUrl = if (serverUrl.endsWith("/")) serverUrl.dropLast(1) else serverUrl
+                val heartbeatUrl = if (baseUrl.endsWith("/api/mdm/heartbeat")) baseUrl else "$baseUrl/api/mdm/heartbeat"
+
+                val conn = (URL(heartbeatUrl).openConnection() as HttpURLConnection).apply {
+                    requestMethod = "POST"
+                    setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+                    setRequestProperty("User-Agent", "KioskMDM-TabletAgent/1.0")
+                    connectTimeout = 8000
+                    readTimeout = 8000
+                    doOutput = true
+                }
+
+                OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use { writer ->
+                    writer.write(root.toString())
+                    writer.flush()
+                }
+
+                val responseCode = conn.responseCode
+                Log.i(TAG, "Central MDM HTTP sync response: $responseCode")
+            } catch (e: Exception) {
+                Log.w(TAG, "HTTP sync failed: ${e.message}")
             }
-            val ackPayload = JSONObject().apply {
-                put("commandId", commandId)
-                put("status", status)
-            }
-            OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use { it.write(ackPayload.toString()) }
-            conn.responseCode
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to send command ACK", e)
         }
+
+        Result.success()
     }
 }
