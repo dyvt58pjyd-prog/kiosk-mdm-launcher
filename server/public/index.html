@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MDM Cloud Console | Tablet Fleet &amp; Neon DB</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Leaflet.js for Fleet GPS Map -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        darkBg: '#0D1117',
+                        darkSurface: '#161B22',
+                        darkElevated: '#21262D',
+                        darkBorder: '#30363D',
+                        accentBlue: '#2F81F7',
+                        accentGreen: '#238636',
+                        accentYellow: '#D29922',
+                        accentRed: '#F85149',
+                        accentPurple: '#A371F7'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #0D1117; color: #F0F6FC; }
+        code, pre { font-family: 'JetBrains Mono', monospace; }
+        .pulsing-dot { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
+        #fleet-map { height: 500px; border-radius: 12px; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+    <!-- Top Navigation Header -->
+    <header class="bg-darkSurface border-b border-darkBorder sticky top-0 z-40 px-6 py-3.5">
+        <div class="max-w-7xl mx-auto flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="w-9 h-9 rounded-lg bg-accentBlue/20 border border-accentBlue/40 flex items-center justify-center text-accentBlue font-bold text-lg">
+                    🛡️
+                </div>
+                <div>
+                    <div class="flex items-center space-x-2">
+                        <h1 class="text-base font-bold text-white tracking-wide">KIOSK MDM CONSOLE</h1>
+                        <span class="px-2 py-0.5 text-xs font-semibold rounded bg-darkElevated text-gray-300 border border-darkBorder">Neon Cloud</span>
+                    </div>
+                    <p class="text-xs text-gray-400">Tablet Device Policy &amp; Real-Time Fleet Controller</p>
+                </div>
+            </div>
+
+            <div class="flex items-center space-x-3">
+                <!-- QR Code Enrollment Button -->
+                <button onclick="openQrModal()" class="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border border-darkBorder bg-darkElevated text-xs font-medium text-gray-300 hover:text-white hover:border-gray-500 transition-all">
+                    <span>📱 Enroll Tablet (QR)</span>
+                </button>
+
+                <!-- Neon Database Status Button -->
+                <button id="btn-neon-status" onclick="openNeonModal()" class="flex items-center space-x-2 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all bg-darkElevated border-darkBorder hover:border-gray-500">
+                    <span id="neon-indicator" class="w-2.5 h-2.5 rounded-full bg-accentYellow pulsing-dot"></span>
+                    <span id="neon-status-text" class="text-gray-300">Checking Neon...</span>
+                </button>
+
+                <!-- Seed Demo Data Button -->
+                <button onclick="seedDemoData()" class="px-3 py-1.5 rounded-lg border border-darkBorder bg-darkElevated text-xs font-medium text-gray-300 hover:text-white hover:border-gray-500 transition-all">
+                    + Seed Demo
+                </button>
+
+                <!-- WebSocket Sub-Second Push Indicator -->
+                <div class="hidden sm:flex items-center space-x-1.5 text-xs text-gray-400">
+                    <span class="w-2 h-2 rounded-full bg-accentGreen pulsing-dot"></span>
+                    <span id="live-socket-count">Live Push</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <div class="bg-darkSurface/60 border-b border-darkBorder px-6">
+        <div class="max-w-7xl mx-auto flex space-x-8 text-sm font-medium">
+            <button onclick="switchTab('fleet')" id="tab-fleet" class="py-3 border-b-2 border-accentBlue text-white font-semibold">
+                📱 Tablet Fleet
+            </button>
+            <button onclick="switchTab('map')" id="tab-map" class="py-3 border-b-2 border-transparent text-gray-400 hover:text-gray-200">
+                🗺️ Fleet GPS Map
+            </button>
+            <button onclick="switchTab('whitelist')" id="tab-whitelist" class="py-3 border-b-2 border-transparent text-gray-400 hover:text-gray-200">
+                🔒 App Whitelist Policy
+            </button>
+            <button onclick="switchTab('audit')" id="tab-audit" class="py-3 border-b-2 border-transparent text-gray-400 hover:text-gray-200">
+                📜 Audit &amp; Security Logs
+            </button>
+            <button onclick="switchTab('neon')" id="tab-neon" class="py-3 border-b-2 border-transparent text-gray-400 hover:text-gray-200">
+                ⚡ Neon PostgreSQL
+            </button>
+        </div>
+    </div>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-6">
+
+        <!-- ======================= TAB 1: FLEET OVERVIEW ======================= -->
+        <section id="view-fleet" class="space-y-6">
+            <!-- Metric KPI Cards -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div class="bg-darkSurface border border-darkBorder rounded-xl p-4">
+                    <div class="text-xs uppercase tracking-wider text-gray-400 font-medium">Total Tablets</div>
+                    <div id="stat-total" class="text-3xl font-bold mt-1 text-white">0</div>
+                    <div class="text-xs text-gray-500 mt-1">Enrolled in MDM system</div>
+                </div>
+                <div class="bg-darkSurface border border-darkBorder rounded-xl p-4">
+                    <div class="text-xs uppercase tracking-wider text-gray-400 font-medium">Online (Live Socket)</div>
+                    <div id="stat-online" class="text-3xl font-bold mt-1 text-accentGreen">0</div>
+                    <div class="text-xs text-gray-500 mt-1">Sub-second remote control active</div>
+                </div>
+                <div class="bg-darkSurface border border-darkBorder rounded-xl p-4">
+                    <div class="text-xs uppercase tracking-wider text-gray-400 font-medium">Critical Battery (&lt;20%)</div>
+                    <div id="stat-battery" class="text-3xl font-bold mt-1 text-accentRed">0</div>
+                    <div class="text-xs text-gray-500 mt-1">Tablets requiring charging</div>
+                </div>
+                <div class="bg-darkSurface border border-darkBorder rounded-xl p-4">
+                    <div class="text-xs uppercase tracking-wider text-gray-400 font-medium">Device Owner Locks</div>
+                    <div id="stat-locked" class="text-3xl font-bold mt-1 text-accentBlue">0</div>
+                    <div class="text-xs text-gray-500 mt-1">Fully restricted Kiosk mode</div>
+                </div>
+            </div>
+
+            <!-- Search and Controls Bar -->
+            <div class="flex flex-col sm:flex-row items-center justify-between gap-4 bg-darkSurface border border-darkBorder p-4 rounded-xl">
+                <div class="relative w-full sm:w-80">
+                    <input type="text" id="device-search" placeholder="Search by name, model, IP..." oninput="renderDevices()" class="w-full bg-darkElevated border border-darkBorder text-sm rounded-lg pl-9 pr-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-accentBlue" />
+                    <span class="absolute left-3 top-2.5 text-gray-500 text-sm">🔍</span>
+                </div>
+                <div class="flex items-center space-x-3 w-full sm:w-auto justify-end">
+                    <select id="status-filter" onchange="renderDevices()" class="bg-darkElevated border border-darkBorder text-sm rounded-lg px-3 py-2 text-gray-300 focus:outline-none">
+                        <option value="ALL">All Statuses</option>
+                        <option value="ONLINE">Online Only</option>
+                        <option value="OFFLINE">Offline Only</option>
+                    </select>
+                    <button onclick="fetchDevices()" class="px-3 py-2 rounded-lg bg-darkElevated border border-darkBorder text-sm text-gray-300 hover:text-white">
+                        🔄 Refresh
+                    </button>
+                </div>
+            </div>
+
+            <!-- Devices Grid Container -->
+            <div id="devices-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                <!-- Device cards will be dynamically injected here -->
+            </div>
+        </section>
+
+        <!-- ======================= TAB 2: FLEET GPS MAP ======================= -->
+        <section id="view-map" class="hidden space-y-6">
+            <div class="bg-darkSurface border border-darkBorder rounded-xl p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <div>
+                        <h2 class="text-lg font-bold text-white">Geographic Fleet Tracking</h2>
+                        <p class="text-sm text-gray-400">Live GPS and network coordinates reported by enrolled tablets.</p>
+                    </div>
+                    <button onclick="initOrUpdateMap()" class="px-3 py-1.5 rounded-lg bg-darkElevated border border-darkBorder text-xs text-gray-300 hover:text-white">
+                        🔄 Refresh Map
+                    </button>
+                </div>
+                <div id="fleet-map" class="border border-darkBorder"></div>
+            </div>
+        </section>
+
+        <!-- ======================= TAB 3: GLOBAL WHITELIST ======================= -->
+        <section id="view-whitelist" class="hidden space-y-6">
+            <div class="bg-darkSurface border border-darkBorder rounded-xl p-6">
+                <h2 class="text-lg font-bold text-white mb-2">Global App Whitelist Profile</h2>
+                <p class="text-sm text-gray-400 mb-6">These Android package names are whitelisted inside Lock Task Mode across your tablet fleet. Updating here queues push commands to all active devices.</p>
+
+                <div class="flex gap-3 mb-6">
+                    <input type="text" id="new-pkg-input" placeholder="e.g. com.google.android.apps.docs" class="flex-1 bg-darkElevated border border-darkBorder text-sm rounded-lg px-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:border-accentBlue" />
+                    <button onclick="addGlobalPackage()" class="px-5 py-2.5 rounded-lg bg-accentBlue hover:bg-blue-600 font-semibold text-sm text-white transition-all">
+                        + Add Package
+                    </button>
+                </div>
+
+                <div class="border border-darkBorder rounded-lg overflow-hidden">
+                    <table class="w-full text-left text-sm">
+                        <thead class="bg-darkElevated text-gray-400 text-xs uppercase border-b border-darkBorder">
+                            <tr>
+                                <th class="px-4 py-3">Package Identifier</th>
+                                <th class="px-4 py-3">Type</th>
+                                <th class="px-4 py-3 text-right">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="whitelist-table-body" class="divide-y divide-darkBorder">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="mt-6 flex justify-end">
+                    <button onclick="pushWhitelistToAll()" class="px-6 py-2.5 rounded-lg bg-accentGreen hover:bg-green-600 font-semibold text-sm text-white transition-all flex items-center space-x-2">
+                        <span>🚀 Push Whitelist to All Enrolled Tablets</span>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- ======================= TAB 4: AUDIT & SECURITY LOGS ======================= -->
+        <section id="view-audit" class="hidden space-y-6">
+            <div class="bg-darkSurface border border-darkBorder rounded-xl p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <div>
+                        <h2 class="text-lg font-bold text-white">Security &amp; Audit Event Stream</h2>
+                        <p class="text-sm text-gray-400">Tamper detection, lock task entries, battery alerts, and remote command executions stored in Neon.</p>
+                    </div>
+                    <button onclick="fetchAuditLogs()" class="px-3 py-1.5 rounded-lg bg-darkElevated border border-darkBorder text-xs text-gray-300 hover:text-white">
+                        🔄 Refresh Logs
+                    </button>
+                </div>
+
+                <div class="border border-darkBorder rounded-lg overflow-hidden">
+                    <table class="w-full text-left text-sm">
+                        <thead class="bg-darkElevated text-gray-400 text-xs uppercase border-b border-darkBorder">
+                            <tr>
+                                <th class="px-4 py-3">Timestamp</th>
+                                <th class="px-4 py-3">Device</th>
+                                <th class="px-4 py-3">Event Type</th>
+                                <th class="px-4 py-3">Description</th>
+                            </tr>
+                        </thead>
+                        <tbody id="audit-table-body" class="divide-y divide-darkBorder font-mono text-xs">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ======================= TAB 5: NEON POSTGRESQL SETTINGS ======================= -->
+        <section id="view-neon" class="space-y-6 hidden">
+            <div class="bg-darkSurface border border-darkBorder rounded-xl p-6">
+                <div class="flex items-start justify-between">
+                    <div>
+                        <div class="flex items-center space-x-3">
+                            <span class="text-2xl">⚡</span>
+                            <h2 class="text-xl font-bold text-white">Neon Serverless PostgreSQL Configuration</h2>
+                        </div>
+                        <p class="text-sm text-gray-400 mt-1">Connect your Neon serverless database to persist tablet telemetry, audit logs, and remote command histories in real time.</p>
+                    </div>
+                    <span id="neon-badge-pill" class="px-3 py-1 rounded-full text-xs font-semibold bg-darkElevated border border-darkBorder text-gray-300">
+                        Checking...
+                    </span>
+                </div>
+
+                <div class="mt-6 space-y-4">
+                    <div>
+                        <label class="block text-xs uppercase font-medium text-gray-400 mb-2">Neon Database Connection String (DATABASE_URL)</label>
+                        <input type="text" id="neon-input-url" placeholder="postgresql://neondb_owner:npg_xxxx@ep-xxxx.us-east-2.aws.neon.tech/neondb?sslmode=require" class="w-full bg-darkElevated border border-darkBorder text-sm font-mono rounded-lg px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:border-accentBlue" />
+                        <p class="text-xs text-gray-500 mt-2">Find your connection string in the <a href="https://console.neon.tech" target="_blank" class="text-accentBlue hover:underline">Neon Console</a> ➔ Dashboard ➔ Connection Details (select <b>Postgres</b> or <b>Node.js</b>).</p>
+                    </div>
+
+                    <div class="flex items-center space-x-3 pt-2">
+                        <button onclick="saveNeonConfig()" class="px-6 py-2.5 rounded-lg bg-accentBlue hover:bg-blue-600 font-semibold text-sm text-white transition-all">
+                            Save &amp; Connect to Neon
+                        </button>
+                        <button onclick="checkNeonStatus()" class="px-4 py-2.5 rounded-lg bg-darkElevated border border-darkBorder text-sm text-gray-300 hover:text-white">
+                            Test Connection
+                        </button>
+                    </div>
+
+                    <div id="neon-result-box" class="hidden p-4 rounded-lg text-sm font-mono"></div>
+                </div>
+
+                <!-- Database Schema Documentation -->
+                <div class="mt-8 pt-6 border-t border-darkBorder">
+                    <h3 class="text-sm font-bold text-gray-300 uppercase tracking-wider mb-3">Auto-Migrated Database Tables</h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs font-mono">
+                        <div class="bg-darkElevated p-3 rounded-lg border border-darkBorder">
+                            <div class="text-accentBlue font-bold">devices</div>
+                            <div class="text-gray-400 mt-1">Tablets, hardware specs, battery, RAM, online state</div>
+                        </div>
+                        <div class="bg-darkElevated p-3 rounded-lg border border-darkBorder">
+                            <div class="text-accentGreen font-bold">device_telemetry</div>
+                            <div class="text-gray-400 mt-1">Time-series battery &amp; RAM logs for charts</div>
+                        </div>
+                        <div class="bg-darkElevated p-3 rounded-lg border border-darkBorder">
+                            <div class="text-accentYellow font-bold">device_commands</div>
+                            <div class="text-gray-400 mt-1">Queue for LOCK, REBOOT, SIREN, and Whitelist updates</div>
+                        </div>
+                        <div class="bg-darkElevated p-3 rounded-lg border border-darkBorder">
+                            <div class="text-accentRed font-bold">audit_logs</div>
+                            <div class="text-gray-400 mt-1">Security events and administrator actions</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- ======================= ADVANCED DEVICE INSPECTOR MODAL ======================= -->
+    <div id="device-modal" class="hidden fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+        <div class="bg-darkSurface border border-darkBorder rounded-2xl max-w-4xl w-full max-h-[92vh] overflow-y-auto shadow-2xl">
+            <!-- Modal Header -->
+            <div class="flex items-center justify-between p-6 border-b border-darkBorder">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 rounded-xl bg-accentBlue/20 border border-accentBlue/40 flex items-center justify-center text-xl">
+                        📱
+                    </div>
+                    <div>
+                        <div class="flex items-center space-x-2">
+                            <h2 id="modal-device-name" class="text-lg font-bold text-white">Tablet Name</h2>
+                            <span id="modal-status-badge" class="px-2 py-0.5 text-xs font-semibold rounded bg-accentGreen text-white">ONLINE</span>
+                            <span id="modal-socket-badge" class="px-2 py-0.5 text-xs font-semibold rounded bg-accentPurple text-white">Live Push</span>
+                        </div>
+                        <div id="modal-device-sub" class="text-xs text-gray-400 font-mono mt-0.5">Model - IP: 192.168.1.1</div>
+                    </div>
+                </div>
+                <button onclick="closeDeviceModal()" class="w-8 h-8 rounded-lg bg-darkElevated text-gray-400 hover:text-white flex items-center justify-center text-lg">
+                    ✕
+                </button>
+            </div>
+
+            <!-- Modal Body -->
+            <div class="p-6 space-y-6">
+                <!-- Advanced Remote Actions Control Center -->
+                <div class="bg-darkElevated p-5 rounded-xl border border-darkBorder">
+                    <div class="text-xs uppercase tracking-wider text-accentBlue font-bold mb-3">⚡ Advanced Instant Remote Control (Sub-Second Push)</div>
+                    <div class="flex flex-wrap gap-2.5">
+                        <button onclick="sendRemoteCommand('LOCK')" class="px-3.5 py-2 rounded-lg bg-darkSurface border border-darkBorder hover:border-accentBlue text-xs font-semibold text-white flex items-center space-x-1.5 transition-all">
+                            <span>🔒 Lock Screen</span>
+                        </button>
+                        <button onclick="sendRemoteCommand('SIREN', { duration: 10 })" class="px-3.5 py-2 rounded-lg bg-darkSurface border border-darkBorder hover:border-accentYellow text-xs font-semibold text-accentYellow flex items-center space-x-1.5 transition-all">
+                            <span>🚨 Play Siren (10s)</span>
+                        </button>
+                        <button onclick="openMessageDialog()" class="px-3.5 py-2 rounded-lg bg-darkSurface border border-darkBorder hover:border-accentGreen text-xs font-semibold text-accentGreen flex items-center space-x-1.5 transition-all">
+                            <span>💬 Send Pop-up Msg</span>
+                        </button>
+                        <button onclick="toggleCameraLock()" id="btn-camera-toggle" class="px-3.5 py-2 rounded-lg bg-darkSurface border border-darkBorder hover:border-gray-400 text-xs font-semibold text-gray-200 flex items-center space-x-1.5 transition-all">
+                            <span>📷 Toggle Camera Lock</span>
+                        </button>
+                        <button onclick="sendRemoteCommand('REBOOT')" class="px-3.5 py-2 rounded-lg bg-darkSurface border border-darkBorder hover:border-accentRed text-xs font-semibold text-accentRed flex items-center space-x-1.5 transition-all">
+                            <span>🔄 Reboot Tablet</span>
+                        </button>
+                        <button onclick="promptEnterpriseWipe()" class="px-3.5 py-2 rounded-lg bg-accentRed/20 border border-accentRed/40 text-xs font-semibold text-accentRed flex items-center space-x-1.5 transition-all">
+                            <span>⚠️ Remote Wipe</span>
+                        </button>
+                    </div>
+
+                    <!-- Remote Brightness & Volume Sliders -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4 pt-4 border-t border-darkBorder/60">
+                        <div>
+                            <div class="flex justify-between text-xs text-gray-300 mb-1">
+                                <span>☀️ Remote Brightness:</span>
+                                <span id="lbl-remote-brightness">70%</span>
+                            </div>
+                            <input type="range" min="10" max="100" value="70" onchange="pushBrightness(this.value)" class="w-full accent-accentBlue" />
+                        </div>
+                        <div>
+                            <div class="flex justify-between text-xs text-gray-300 mb-1">
+                                <span>🔊 Remote Volume:</span>
+                                <span id="lbl-remote-volume">80%</span>
+                            </div>
+                            <input type="range" min="0" max="100" value="80" onchange="pushVolume(this.value)" class="w-full accent-accentBlue" />
+                        </div>
+                    </div>
+
+                    <div id="modal-cmd-feedback" class="text-xs mt-3 text-gray-400"></div>
+                </div>
+
+                <!-- Live Metrics Grid -->
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <div class="bg-darkElevated p-4 rounded-xl border border-darkBorder">
+                        <div class="text-xs text-gray-400">Battery</div>
+                        <div id="modal-battery-val" class="text-2xl font-bold mt-1 text-white">88%</div>
+                        <div id="modal-battery-sub" class="text-xs text-gray-500 mt-1">⚡ Charging (29°C)</div>
+                    </div>
+                    <div class="bg-darkElevated p-4 rounded-xl border border-darkBorder">
+                        <div class="text-xs text-gray-400">RAM Memory</div>
+                        <div id="modal-ram-val" class="text-2xl font-bold mt-1 text-white">3.5 GB</div>
+                        <div id="modal-ram-sub" class="text-xs text-gray-500 mt-1">45% used of 8 GB</div>
+                    </div>
+                    <div class="bg-darkElevated p-4 rounded-xl border border-darkBorder">
+                        <div class="text-xs text-gray-400">Internal Storage</div>
+                        <div id="modal-storage-val" class="text-2xl font-bold mt-1 text-white">43.5 GB</div>
+                        <div id="modal-storage-sub" class="text-xs text-gray-500 mt-1">34% used of 128 GB</div>
+                    </div>
+                    <div class="bg-darkElevated p-4 rounded-xl border border-darkBorder">
+                        <div class="text-xs text-gray-400">Wi-Fi Signal</div>
+                        <div id="modal-wifi-val" class="text-2xl font-bold mt-1 text-white">-52 dBm</div>
+                        <div id="modal-wifi-sub" class="text-xs text-gray-500 mt-1">Guest-WiFi</div>
+                    </div>
+                </div>
+
+                <!-- Telemetry History Chart -->
+                <div class="bg-darkElevated p-4 rounded-xl border border-darkBorder">
+                    <div class="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3">Live Telemetry History (Battery &amp; RAM)</div>
+                    <div class="h-56">
+                        <canvas id="telemetryChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Whitelisted Apps for this Tablet -->
+                <div class="bg-darkElevated p-4 rounded-xl border border-darkBorder">
+                    <div class="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3">Active Whitelisted Apps on Device</div>
+                    <div id="modal-whitelisted-apps" class="flex flex-wrap gap-2">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ======================= QR CODE ENROLLMENT MODAL ======================= -->
+    <div id="qr-modal" class="hidden fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+        <div class="bg-darkSurface border border-darkBorder rounded-2xl max-w-md w-full p-6 text-center space-y-4">
+            <h3 class="text-lg font-bold text-white">📱 Enroll Android Tablet via QR</h3>
+            <p class="text-xs text-gray-400">Scan this code from the tablet Admin Panel to automatically bind it to this MDM server and Neon database.</p>
+            <div class="p-4 bg-white rounded-xl inline-block mx-auto border-4 border-accentBlue">
+                <img id="qr-image" src="" alt="Enrollment QR Code" class="w-64 h-64 mx-auto" />
+            </div>
+            <div class="text-xs font-mono text-gray-400 truncate bg-darkElevated p-2 rounded" id="qr-server-url"></div>
+            <button onclick="closeQrModal()" class="w-full py-2.5 rounded-lg bg-darkElevated border border-darkBorder text-sm text-gray-300 hover:text-white">
+                Close
+            </button>
+        </div>
+    </div>
+
+    <!-- JavaScript App Logic -->
+    <script src="app.js"></script>
+</body>
+</html>

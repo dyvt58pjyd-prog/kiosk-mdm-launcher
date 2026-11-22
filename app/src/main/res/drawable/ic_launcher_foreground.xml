@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Outer Shield / Tablet Outline -->
+    <path
+        android:fillColor="#2F81F7"
+        android:pathData="M54,20L28,31v22c0,16.5 11.1,31.8 26,35.5c14.9,-3.7 26,-19 26,-35.5V31L54,20z"/>
+    <!-- Center Padlock / Kiosk Icon -->
+    <path
+        android:fillColor="#F0F6FC"
+        android:pathData="M54,42c-3.3,0 -6,2.7 -6,6v4h-2c-1.1,0 -2,0.9 -2,2v12c0,1.1 0.9,2 2,2h16c1.1,0 2,-0.9 2,-2V54c0,-1.1 -0.9,-2 -2,-2h-2v-4c0,-3.3 -2.7,-6 -6,-6zm3,10h-6v-4c0,-1.7 1.3,-3 3,-3s3,1.3 3,3v4z"/>
+</vector>

@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Kiosk MDM Launcher</string>
+    <string name="admin_receiver_label">Kiosk MDM Device Owner</string>
+    <string name="admin_receiver_description">Controls Lock Task Mode, App Whitelisting, and MDM Device Policies for Tablet Kiosk Operation.</string>
+</resources>
