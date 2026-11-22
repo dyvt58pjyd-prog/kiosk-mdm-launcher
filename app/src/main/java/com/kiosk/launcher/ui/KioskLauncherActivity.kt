@@ -32,6 +32,8 @@ import com.kiosk.launcher.ui.dialogs.QuickSettingsDialog
 import com.kiosk.launcher.ui.theme.BackgroundDark
 import com.kiosk.launcher.ui.theme.KioskMDMTheme
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
@@ -312,7 +314,7 @@ class KioskLauncherActivity : ComponentActivity() {
             val neonClient = com.kiosk.launcher.mdm.NeonDirectDatabaseClient(applicationContext)
             val advancedFeatures = com.kiosk.launcher.mdm.MdmAdvancedFeatures(applicationContext)
 
-            while (kotlinx.coroutines.isActive) {
+            while (isActive) {
                 try {
                     val data = telemetryCollector.collect()
 
@@ -343,7 +345,7 @@ class KioskLauncherActivity : ComponentActivity() {
                                     for (j in 0 until list.length()) newWhitelist.add(list.getString(j))
                                     prefs.whitelistedPackages = newWhitelist
                                     policyManager.updateLockTaskPackages()
-                                    withContext(Dispatchers.Main) {
+                                    runOnUiThread {
                                         filterWhitelistedApps()
                                     }
                                 }
