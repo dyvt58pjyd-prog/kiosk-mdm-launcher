@@ -31,6 +31,9 @@ class KioskPreferences(context: Context) {
         const val DEFAULT_NEON_URL =
             "postgresql://neondb_owner:npg_6NGxiCS0Ubjp@ep-quiet-lab-bdb0wmhf-pooler.c-8.us-east-2.aws.neon.tech/neondb?sslmode=require"
 
+        // Default Central MDM Vercel Cloud Server URL
+        const val DEFAULT_MDM_SERVER_URL = "https://server-gold-six-73.vercel.app"
+
         // Standard default whitelisted apps (Settings + Browser if installed)
         private val DEFAULT_WHITELIST = setOf(
             "com.android.chrome",
@@ -90,7 +93,7 @@ class KioskPreferences(context: Context) {
         set(value) = prefs.edit().putBoolean(KEY_DISALLOW_STATUS_BAR, value).apply()
 
     var mdmServerUrl: String
-        get() = prefs.getString(KEY_MDM_SERVER_URL, "http://192.168.0.11:3000") ?: "http://192.168.0.11:3000"
+        get() = prefs.getString(KEY_MDM_SERVER_URL, DEFAULT_MDM_SERVER_URL) ?: DEFAULT_MDM_SERVER_URL
         set(value) = prefs.edit().putString(KEY_MDM_SERVER_URL, value).apply()
 
     var mdmReportingIntervalMinutes: Int

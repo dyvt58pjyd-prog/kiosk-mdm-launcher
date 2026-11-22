@@ -643,7 +643,7 @@ private fun MdmTelemetryTab(
             ) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = "Enter your PC / Server MDM Dashboard URL (e.g., http://192.168.0.11:3000):",
+                        text = "Central Vercel MDM Dashboard endpoint:",
                         fontSize = 12.sp,
                         color = TextSecondary
                     )
@@ -654,7 +654,7 @@ private fun MdmTelemetryTab(
                             prefs.mdmServerUrl = it
                         },
                         label = { Text("MDM Server URL") },
-                        placeholder = { Text("http://192.168.0.11:3000") },
+                        placeholder = { Text("https://server-gold-six-73.vercel.app") },
                         modifier = Modifier.fillMaxWidth(),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = AccentPrimary,

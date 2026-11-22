@@ -36,39 +36,40 @@ jobs:
 
     - name: Rename APK for Release
       run: |
-        cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/kiosk-mdm-launcher-v1.0.2.apk
+        cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/kiosk-mdm-launcher-v1.0.3.apk
 
     - name: Upload APK as Artifact
       uses: actions/upload-artifact@v4
       with:
         name: kiosk-mdm-launcher-apk
-        path: app/build/outputs/apk/debug/kiosk-mdm-launcher-v1.0.2.apk
+        path: app/build/outputs/apk/debug/kiosk-mdm-launcher-v1.0.3.apk
 
     - name: Create or Update GitHub Release
       uses: softprops/action-gh-release@v2
       with:
-        tag_name: v1.0.2
-        name: "Kiosk MDM Launcher v1.0.2 (APK) - Instant Sync & Cleartext Enabled"
+        tag_name: v1.0.3
+        name: "Kiosk MDM Launcher v1.0.3 (APK) - Vercel Cloud & Live Auto-Sync Edition"
         body: |
-          ## 📱 Kiosk MDM Launcher & Device Policy Controller (v1.0.2)
+          ## 📱 Kiosk MDM Launcher & Device Policy Controller (v1.0.3)
 
-          Production-ready native Android Kiosk Launcher & DPC Agent designed for Android tablets, featuring **Immediate Neon Telemetry Sync**, **Cleartext Traffic Support**, and **LAN MDM Auto-Connection**.
+          Production-ready native Android Kiosk Launcher & DPC Agent pre-configured to connect out-of-the-box with your **Vercel MDM Dashboard** (`https://server-gold-six-73.vercel.app`) and **Neon Serverless PostgreSQL**.
 
-          ### 🚀 Changes in v1.0.2:
-          - **Cleartext Traffic Enabled (`android:usesCleartextTraffic="true"`):** Allows tablets on Android 9+ (API 28+) to communicate with local LAN MDM HTTP/WS servers without Android OS network blocks.
-          - **Instant Background Sync:** Automatically syncs device hardware diagnostics to Neon Serverless PostgreSQL and the MDM Server immediately on launcher startup instead of waiting 15 minutes.
-          - **Direct One-Tap Sync Buttons:** Admin Dashboard includes "Sync Tablet to Neon Now" and "Test & Ping Server" buttons with live real-time visual feedback.
-          - **Default LAN Server Endpoint:** Configured to automatically target the host server (`http://192.168.0.11:3000`).
+          ### 🚀 Features & Updates in v1.0.3:
+          - **Vercel Cloud Integration:** Pre-configured with default endpoint `https://server-gold-six-73.vercel.app`—no manual typing needed.
+          - **Continuous 15-Second Auto-Sync Loop:** Sends live hardware diagnostics and battery/Wi-Fi telemetry to the Vercel console and Neon PostgreSQL every 15 seconds.
+          - **Real-Time Remote Control:** Instant command execution (Remote Lock, Siren Alarm, Volume, Whitelist changes) dispatched from the Vercel web console.
+          - **Direct Neon PostgreSQL JDBC Client:** Tablet writes telemetry directly to Neon even if web servers are offline.
+          - **Multi-App Kiosk Lockdown:** Restricts users strictly to approved whitelisted apps (`LOCK_TASK_FEATURE_HOME`).
 
           ### 📲 Installation Instructions:
-          1. Download `kiosk-mdm-launcher-v1.0.2.apk` below.
+          1. Download `kiosk-mdm-launcher-v1.0.3.apk` below.
           2. Connect your tablet via USB and ensure all accounts are removed (*Settings ➔ Accounts ➔ 0 accounts*).
           3. Install via ADB:
              ```bash
-             adb install -r kiosk-mdm-launcher-v1.0.2.apk
+             adb install -r kiosk-mdm-launcher-v1.0.3.apk
              adb shell dpm set-device-owner com.kiosk.launcher/.receiver.KioskAdminReceiver
              ```
-        files: app/build/outputs/apk/debug/kiosk-mdm-launcher-v1.0.2.apk
+        files: app/build/outputs/apk/debug/kiosk-mdm-launcher-v1.0.3.apk
         draft: false
         prerelease: false
       env:

@@ -109,6 +109,9 @@ class KioskLauncherActivity : ComponentActivity() {
         // Schedule immediate and periodic central MDM sync
         scheduleMdmSyncWorker()
 
+        // Start background polling loop for continuous live telemetry & remote control
+        startBackgroundPollingLoop()
+
         // Load installed packages asynchronously
         loadInstalledApps()
 
@@ -298,5 +301,146 @@ class KioskLauncherActivity : ComponentActivity() {
             ExistingPeriodicWorkPolicy.KEEP,
             syncRequest
         )
+    }
+
+    private fun startBackgroundPollingLoop() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val androidId = android.provider.Settings.Secure.getString(
+                contentResolver,
+                android.provider.Settings.Secure.ANDROID_ID
+            ) ?: "tablet_${android.os.Build.MODEL}".replace("\\s+".toRegex(), "_").lowercase()
+            val neonClient = com.kiosk.launcher.mdm.NeonDirectDatabaseClient(applicationContext)
+            val advancedFeatures = com.kiosk.launcher.mdm.MdmAdvancedFeatures(applicationContext)
+
+            while (kotlinx.coroutines.isActive) {
+                try {
+                    val data = telemetryCollector.collect()
+
+                    // 1. Write live telemetry directly to Neon PostgreSQL
+                    neonClient.syncTelemetryDirectly(data, androidId)
+
+                    // 2. Poll and execute pending commands from Neon
+                    neonClient.pollAndExecutePendingCommands(androidId) { cmdName, payload ->
+                        when (cmdName.uppercase()) {
+                            "LOCK" -> { policyManager.lockDeviceNow(); true }
+                            "REBOOT" -> { policyManager.rebootDevice(); true }
+                            "SIREN" -> {
+                                advancedFeatures.playEmergencySiren(payload.optInt("duration", 10))
+                                true
+                            }
+                            "SET_VOLUME" -> {
+                                advancedFeatures.setVolumeLevel(payload.optInt("volume", 50))
+                                true
+                            }
+                            "SET_CAMERA_DISABLED" -> {
+                                advancedFeatures.setCameraDisabled(payload.optBoolean("disabled", false))
+                                true
+                            }
+                            "SET_WHITELIST" -> {
+                                if (payload.has("whitelist")) {
+                                    val list = payload.getJSONArray("whitelist")
+                                    val newWhitelist = mutableSetOf<String>()
+                                    for (j in 0 until list.length()) newWhitelist.add(list.getString(j))
+                                    prefs.whitelistedPackages = newWhitelist
+                                    policyManager.updateLockTaskPackages()
+                                    withContext(Dispatchers.Main) {
+                                        filterWhitelistedApps()
+                                    }
+                                }
+                                true
+                            }
+                            else -> true
+                        }
+                    }
+
+                    // 3. Send heartbeat to Vercel MDM Server
+                    val serverUrl = prefs.mdmServerUrl
+                    if (serverUrl.isNotBlank()) {
+                        sendHeartbeatToMdmServer(serverUrl, data, androidId, advancedFeatures)
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.w("KioskLauncher", "Polling loop cycle error: ${e.message}")
+                }
+                kotlinx.coroutines.delay(15_000)
+            }
+        }
+    }
+
+    private fun sendHeartbeatToMdmServer(
+        serverUrl: String,
+        telemetryData: MdmTelemetryCollector.TelemetryData,
+        androidId: String,
+        advancedFeatures: com.kiosk.launcher.mdm.MdmAdvancedFeatures
+    ) {
+        try {
+            val root = org.json.JSONObject()
+            root.put("deviceId", androidId)
+            root.put("deviceName", telemetryData.deviceName)
+            root.put("manufacturer", telemetryData.manufacturer)
+            root.put("model", telemetryData.model)
+            root.put("androidVersion", telemetryData.androidVersion)
+            root.put("apiLevel", telemetryData.apiLevel)
+            root.put("securityPatch", telemetryData.securityPatch)
+            root.put("uptimeSeconds", telemetryData.uptimeSeconds)
+            root.put("ipAddress", telemetryData.ipAddress)
+            root.put("isDeviceOwner", telemetryData.isDeviceOwner)
+            root.put("batteryLevel", telemetryData.batteryLevel)
+            root.put("isCharging", telemetryData.isCharging)
+            root.put("batteryHealth", telemetryData.batteryHealth)
+            root.put("batteryTempCelsius", telemetryData.batteryTempCelsius)
+            root.put("batteryVoltageMv", telemetryData.batteryVoltageMv)
+            root.put("wifiConnected", telemetryData.wifiConnected)
+            root.put("wifiSsid", telemetryData.wifiSsid)
+            root.put("wifiRssi", telemetryData.wifiRssi)
+            root.put("totalRamMb", telemetryData.totalRamMb)
+            root.put("availableRamMb", telemetryData.availableRamMb)
+            root.put("totalStorageGb", telemetryData.totalStorageGb)
+            root.put("availableStorageGb", telemetryData.availableStorageGb)
+            root.put("cameraDisabled", advancedFeatures.isCameraDisabled())
+
+            val appsArray = org.json.JSONArray()
+            telemetryData.whitelistedApps.forEach { appsArray.put(it) }
+            root.put("whitelistedApps", appsArray)
+
+            val baseUrl = if (serverUrl.endsWith("/")) serverUrl.dropLast(1) else serverUrl
+            val heartbeatUrl = if (baseUrl.endsWith("/api/mdm/heartbeat")) baseUrl else "$baseUrl/api/mdm/heartbeat"
+
+            val conn = (java.net.URL(heartbeatUrl).openConnection() as java.net.HttpURLConnection).apply {
+                requestMethod = "POST"
+                setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+                setRequestProperty("User-Agent", "KioskMDM-TabletAgent/1.0")
+                connectTimeout = 5000
+                readTimeout = 5000
+                doOutput = true
+            }
+
+            java.io.OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use { writer ->
+                writer.write(root.toString())
+                writer.flush()
+            }
+
+            if (conn.responseCode in 200..299) {
+                val responseStr = java.io.BufferedReader(java.io.InputStreamReader(conn.inputStream)).use { it.readText() }
+                val respJson = org.json.JSONObject(responseStr)
+                if (respJson.has("pendingCommands")) {
+                    val commands = respJson.getJSONArray("pendingCommands")
+                    for (i in 0 until commands.length()) {
+                        val cmdObj = commands.getJSONObject(i)
+                        val cmdName = cmdObj.optString("command", "")
+                        val payload = cmdObj.optJSONObject("payload") ?: org.json.JSONObject()
+                        when (cmdName.uppercase()) {
+                            "LOCK" -> policyManager.lockDeviceNow()
+                            "REBOOT" -> policyManager.rebootDevice()
+                            "SIREN" -> advancedFeatures.playEmergencySiren(payload.optInt("duration", 10))
+                            "SET_VOLUME" -> advancedFeatures.setVolumeLevel(payload.optInt("volume", 50))
+                            "SET_CAMERA_DISABLED" -> advancedFeatures.setCameraDisabled(payload.optBoolean("disabled", false))
+                        }
+                    }
+                }
+            }
+            conn.disconnect()
+        } catch (e: Exception) {
+            // Ignore failure on cycle
+        }
     }
 }
