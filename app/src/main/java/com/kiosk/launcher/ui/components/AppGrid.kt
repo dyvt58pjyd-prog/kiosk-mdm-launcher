@@ -160,13 +160,15 @@ fun AppGridItem(
  * Converts an Android Drawable safely into a Bitmap.
  */
 fun Drawable.drawableToBitmap(): Bitmap {
-    if (intrinsicWidth <= 0 || intrinsicHeight <= 0) {
-        val bitmap = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
-        return bitmap
+    return try {
+        val w = if (intrinsicWidth > 0) intrinsicWidth.coerceIn(1, 192) else 96
+        val h = if (intrinsicHeight > 0) intrinsicHeight.coerceIn(1, 192) else 96
+        val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        setBounds(0, 0, canvas.width, canvas.height)
+        draw(canvas)
+        bitmap
+    } catch (e: Throwable) {
+        Bitmap.createBitmap(96, 96, Bitmap.Config.ARGB_8888)
     }
-    val bitmap = Bitmap.createBitmap(intrinsicWidth, intrinsicHeight, Bitmap.Config.ARGB_8888)
-    val canvas = Canvas(bitmap)
-    setBounds(0, 0, canvas.width, canvas.height)
-    draw(canvas)
-    return bitmap
 }

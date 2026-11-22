@@ -30,7 +30,7 @@ class NeonDirectDatabaseClient(private val context: Context) {
             try {
                 Class.forName("org.postgresql.Driver")
                 driverLoaded = true
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 Log.w(TAG, "PostgreSQL JDBC driver not found on classpath", e)
             }
         }
@@ -69,7 +69,7 @@ class NeonDirectDatabaseClient(private val context: Context) {
             }
 
             return DriverManager.getConnection(jdbcUrl, props)
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.e(TAG, "Failed to connect directly to Neon PostgreSQL", e)
             return null
         }
@@ -87,7 +87,7 @@ class NeonDirectDatabaseClient(private val context: Context) {
                 Log.i(TAG, "Neon direct connectivity verified! Time: ${rs.getString("current_time")}")
                 hasRow
             } ?: false
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.e(TAG, "Neon direct connectivity test failed", e)
             false
         }

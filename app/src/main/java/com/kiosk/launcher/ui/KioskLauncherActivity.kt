@@ -117,8 +117,16 @@ class KioskLauncherActivity : ComponentActivity() {
         // Load installed packages asynchronously
         loadInstalledApps()
 
-        // Register battery receiver
-        registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        // Register battery receiver (Android 14+ safe)
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED), Context.RECEIVER_EXPORTED)
+            } else {
+                registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            }
+        } catch (e: Throwable) {
+            android.util.Log.w("KioskLauncher", "Battery receiver registration fallback", e)
+        }
 
         // Set Compose Content
         setContent {

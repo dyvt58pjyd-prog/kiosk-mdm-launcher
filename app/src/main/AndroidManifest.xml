@@ -58,12 +58,17 @@
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode"
             android:windowSoftInputMode="adjustPan">
 
-            <!-- Acts as Android Home Screen -->
+            <!-- 1. Pure Launcher Filter: Ensures normal App Drawer icon & enables "Open" button in installer -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- 2. Pure Home Screen Filter: Enables it as the Home Launcher & Default Home selector -->
             <intent-filter android:priority="1000">
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.HOME" />
                 <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
