@@ -566,6 +566,7 @@ private fun MdmTelemetryTab(
     collector: MdmTelemetryCollector,
     prefs: KioskPreferences
 ) {
+    val context = LocalContext.current
     val telemetry = remember { collector.collect() }
     var mdmUrl by remember { mutableStateOf(prefs.mdmServerUrl) }
 
