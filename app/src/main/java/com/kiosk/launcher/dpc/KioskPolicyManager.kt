@@ -143,7 +143,7 @@ class KioskPolicyManager(private val context: Context) {
             setUserRestriction(UserManager.DISALLOW_USB_FILE_TRANSFER, true)
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && prefs.disallowStatusBar) {
-                setUserRestriction(UserManager.DISALLOW_STATUS_BAR_EXPAND, true)
+                setUserRestriction("no_status_bar", true)
             }
             Log.i(TAG, "User lockdown restrictions applied.")
         } catch (e: Exception) {
@@ -165,7 +165,7 @@ class KioskPolicyManager(private val context: Context) {
             setUserRestriction(UserManager.DISALLOW_USB_FILE_TRANSFER, false)
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                setUserRestriction(UserManager.DISALLOW_STATUS_BAR_EXPAND, false)
+                setUserRestriction("no_status_bar", false)
             }
             Log.i(TAG, "User lockdown restrictions cleared.")
         } catch (e: Exception) {
